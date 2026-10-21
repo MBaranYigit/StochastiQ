@@ -10,26 +10,30 @@ def run_gbm_simulation(
 ) -> dict:
     rng = np.random.default_rng(seed)
     dt = 1.0 / 252.0
-    
-    # Shape: (days, simulations) -> Random shock (Z_t) for each day and each scenario
-    z = rng.standard_normal((days, simulations))
-    
-    # Since the real-world drift is applied from day 1, subtracting 0.5 * sigma^2 here is correct
+
     drift_component = (drift - 0.5 * (volatility ** 2)) * dt
-    diffusion_component = volatility * np.sqrt(dt) * z
-    
-    daily_multipliers = np.exp(drift_component + diffusion_component)
-    
-    price_paths = np.empty((days + 1, simulations))
+    diffusion_scale = volatility * np.sqrt(dt)
+
+    # Work in log-space and in place with float32: one ~10 MB matrix
+    # instead of several 20 MB float64 temporaries.
+    work = rng.standard_normal((days, simulations), dtype=np.float32)
+    work *= np.float32(diffusion_scale)
+    work += np.float32(drift_component)
+    np.cumsum(work, axis=0, out=work)          # cumulative log-returns
+    np.exp(work, out=work)
+    work *= np.float32(current_price)
+
+    price_paths = np.empty((days + 1, simulations), dtype=np.float32)
     price_paths[0] = current_price
-    price_paths[1:] = current_price * np.cumprod(daily_multipliers, axis=0)
-    
+    price_paths[1:] = work
+    del work
+
     terminal_prices = price_paths[-1]
-    
+
     return {
         "price_paths": price_paths,
         "terminal_prices": terminal_prices,
-        "mean_target": float(np.mean(terminal_prices)),
+        "mean_target": float(np.mean(terminal_prices, dtype=np.float64)),
         "median_target": float(np.median(terminal_prices)),
         "percentile_5": float(np.percentile(terminal_prices, 5)),
         "percentile_25": float(np.percentile(terminal_prices, 25)),
