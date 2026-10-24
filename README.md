@@ -1,6 +1,6 @@
 # StochastiQ: Equity Scenario & Tail-Risk Analytics
 
-**Live Demo:** [TODO: add live demo link]
+**Live Demo:** https://stochastiqv1.streamlit.app
 
 **StochastiQ** is an interactive equity risk analytics app built with Python, Streamlit, and Plotly. It combines Geometric Brownian Motion (GBM) Monte Carlo simulations with historical and parametric risk metrics (VaR, CVaR, and Maximum Drawdown) to explore forward-looking price scenarios and historical downside risk.
 
