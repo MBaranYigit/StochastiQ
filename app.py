@@ -87,6 +87,7 @@ def compute_bundle(ticker_input: str, sim_days: int, num_simulations: int, stres
             "stress_mode": stress_mode
         }
 # 3. Memory-Safe Plotly Chart Builders (Uses pre-aggregated arrays only)
+# 3. Memory-Safe Plotly Chart Builders (Uses pre-aggregated arrays only)
 def build_fan_chart(bands: dict, ticker: str, currency: str, num_simulations: int) -> go.Figure:
     days_axis = bands["days_axis"]
 
@@ -133,51 +134,83 @@ def build_fan_chart(bands: dict, ticker: str, currency: str, num_simulations: in
     ))
 
     fig.update_layout(
-        title=f"{ticker} — Monte Carlo GBM Price Cone ({num_simulations:,} Paths)",
+        title=dict(
+            text=f"{ticker} — Monte Carlo GBM Price Cone ({num_simulations:,} Paths)",
+            y=0.96, x=0.0
+        ),
         xaxis_title="Trading Days Forward",
         yaxis_title=f"Projected Price ({currency})",
         template="plotly_dark",
         hovermode="x unified",
-        height=430,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=20, r=20, t=60, b=20)
+        height=460,
+        # Move legend below the chart so it never collides with the title
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.20,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11)
+        ),
+        margin=dict(l=20, r=20, t=55, b=85)
     )
     return fig
 
 
 def build_terminal_histogram(hist_data: dict, sim_summary: dict, current_price: float, currency: str) -> go.Figure:
-    # Uses pre-binned 50 bars instead of sending 10,000 raw floats to the browser DOM
+    max_count = max(hist_data["counts"]) if len(hist_data["counts"]) > 0 else 100
+
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=hist_data["bin_centers"],
         y=hist_data["counts"],
         marker_color="rgba(56, 189, 248, 0.65)",
         marker_line=dict(color="rgba(255, 255, 255, 0.15)", width=1),
-        name="Simulation Frequency"
+        name="Frequency",
+        showlegend=False
     ))
 
-    fig.add_vline(
-        x=current_price, line_dash="dot", line_color="#94a3b8", line_width=2,
-        annotation_text=f"Spot: {current_price:.1f}{currency}", annotation_position="top left"
-    )
-    fig.add_vline(
-        x=sim_summary["median_target"], line_dash="solid", line_color="#38bdf8", line_width=2,
-        annotation_text=f"Median: {sim_summary['median_target']:.1f}{currency}", annotation_position="top right"
-    )
-    fig.add_vline(
-        x=sim_summary["percentile_5"], line_dash="dash", line_color="#ef4444", line_width=2,
-        annotation_text=f"P5 Tail: {sim_summary['percentile_5']:.1f}{currency}", annotation_position="top left"
-    )
+    # Draw vertical reference lines without overlapping top text; display values cleanly in bottom legend
+    fig.add_vline(x= sim_summary["percentile_5"], line_dash="dash", line_color="#ef4444", line_width=2)
+    fig.add_vline(x=current_price, line_dash="dot", line_color="#e2e8f0", line_width=2)
+    fig.add_vline(x=sim_summary["median_target"], line_dash="solid", line_color="#38bdf8", line_width=2.5)
+
+    # Dummy traces strictly for a clean, collision-free bottom legend
+    fig.add_trace(go.Scatter(
+        x=[None], y=[None], mode="lines",
+        line=dict(color="#ef4444", width=2, dash="dash"),
+        name=f"P5 Tail: {sim_summary['percentile_5']:.1f}{currency}"
+    ))
+    fig.add_trace(go.Scatter(
+        x=[None], y=[None], mode="lines",
+        line=dict(color="#e2e8f0", width=2, dash="dot"),
+        name=f"Spot: {current_price:.1f}{currency}"
+    ))
+    fig.add_trace(go.Scatter(
+        x=[None], y=[None], mode="lines",
+        line=dict(color="#38bdf8", width=2.5, dash="solid"),
+        name=f"Median: {sim_summary['median_target']:.1f}{currency}"
+    ))
 
     fig.update_layout(
-        title="Terminal Price Distribution at Horizon",
+        title=dict(
+            text="Terminal Price Distribution at Horizon",
+            y=0.96, x=0.0
+        ),
         xaxis_title=f"Terminal Price ({currency})",
         yaxis_title="Simulation Frequency",
         template="plotly_dark",
-        height=430,
+        height=460,
         bargap=0.05,
-        showlegend=False,
-        margin=dict(l=20, r=20, t=60, b=20)
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.20,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11)
+        ),
+        margin=dict(l=20, r=20, t=55, b=85)
     )
     return fig
 
