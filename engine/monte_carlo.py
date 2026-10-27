@@ -39,6 +39,7 @@ def run_gbm_simulation(
         "percentile_25": float(np.percentile(terminal_prices, 25)),
         "percentile_75": float(np.percentile(terminal_prices, 75)),
         "percentile_95": float(np.percentile(terminal_prices, 95)),
+        "prob_above_spot": float(np.mean(terminal_prices > current_price) * 100),
     }
 
 # --- MATHEMATICAL VALIDATION TEST ---

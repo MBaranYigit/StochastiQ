@@ -3,6 +3,7 @@ import re
 import ssl
 import json
 import time
+import math
 import urllib.request
 import urllib.error
 from dotenv import load_dotenv
@@ -163,26 +164,20 @@ def _build_deterministic_quant_report(
         "Standard Historical Market Regime (2-Year Realized Calibration)"
     )
 
-    return f"""### Part 1: Institutional Quantitative Risk Memo
+    # Analytically calculates what percentage of the simulations end above the current price
+    t = sim_days / 252.0
+    sigma = data["annualized_volatility"]
+    mu = data["annualized_drift"]
+    d2 = ((mu - 0.5 * (sigma ** 2)) * t) / (sigma * math.sqrt(t)) if (sigma > 0 and t > 0) else 0.0
+    prob_above = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0))) * 100.0
 
-* **Asset Profile & Stochastic Calibration:** **{ticker}** exhibits a {vol_profile}. Under the **{regime_text}**, the Ito-adjusted annualized drift is calibrated at **{drift_pct:.2f}%** over a **{sim_days}-trading-day** horizon (10,000 Monte Carlo paths).
-* **Terminal Distribution & Asymmetry:** From the current spot price of **{spot_str}**, the median (P50) trajectory reaches **{med_str}** (**{exp_ret_med:+.2f}%**), while the expected mean reaches **{mean_str}** (**{exp_ret_mean:+.2f}%**). The divergence between mean and median reflects right-skewed log-normal compounding.
-* **Scenario Dispersion (Quartile & Tail Cones):** The core 50% interquartile band (P25–P75) spans **{p25_str}** to **{p75_str}**. Under extreme 90% confidence bounds, the bearish 5th percentile (P5) tests **{p5_str}** (**{downside_p5_pct:+.2f}%**), whereas the bullish 95th percentile (P95) extends to **{p95_str}** (**{upside_p95_pct:+.2f}%**).
-* **Parametric vs. Empirical VaR (Kurtosis Check):** {kurtosis_diagnosis}
-* **Expected Shortfall (CVaR) & Drawdown Liquidity:** Daily 95% Historical VaR stands at **-{vh95:.2f}%**, with Conditional VaR (Expected Shortfall) averaging **-{cvar95:.2f}%** during the worst 5% of trading sessions (**-{cvar99:.2f}%** at the 99% level). Combined with a 2-year Maximum Drawdown of **{mdd:.2f}%**, institutional position sizing should enforce strict stop-loss or hedge overlays.
+    stress_note = " (with the macro stress adjustment applied: volatility ×1.5 and reduced drift)" if stress_mode else ""
 
----
+    return f"""Under the selected model assumptions{stress_note} over a **{sim_days}-trading-day** horizon for **{ticker}** (current price: **{spot_str}**), the median simulated price is **{med_str}** and the mean simulated price is **{mean_str}**. Approximately **{prob_above:.1f}%** of simulated outcomes end above the current price.
 
-### Part 2: Plain-English Summary (For Non-Technical Readers)
+The 5th percentile (**{p5_str}**) represents a downside scenario that is exceeded on the lower side in roughly 5% of simulations, while the 95th percentile (**{p95_str}**) marks the upper bound exceeded in roughly 5% of simulations. Looking at actual historical daily returns over the past two years, the 95% daily Historical Value at Risk (VaR) is **-{vh95:.2f}%**, meaning daily losses exceeded this threshold on roughly 5% of trading days, with an average loss (CVaR) of **-{cvar95:.2f}%** on those worst days and a historical maximum peak-to-trough drawdown of **{mdd:.2f}%**.
 
-* **Expected Price Range:** Over the next **{sim_days} trading days**, computer simulations show the most typical middle outcome for **{ticker}** is around **{med_str}** (**{exp_ret_med:+.1f}%** from today's **{spot_str}**). If market momentum is strong (top 5% of scenarios), the stock could reach **{p95_str}**; if a severe slump occurs (bottom 5% of scenarios), it could drop toward **{p5_str}**.
-* **Day-to-Day Risk (What a Bad Day Looks Like):** On 19 out of 20 normal trading days (95% of the time), single-day drops should not exceed **-{vh95:.2f}%**. However, on the rare 1-in-20 turbulent market days when losses break past that level, the average daily drop has historically been **-{cvar95:.2f}%**.
-* **Historical Worst-Case Pullback:** Looking back over the last two years, the steepest drop from a peak to a bottom was **{mdd:.2f}%**. Investors holding **{ticker}** should be comfortable riding out temporary swings of this magnitude.
-
----
-*⚡ Generated via **StochastiQ Algorithmic Quant Engine** (Fallback active — Diagnostic: `{fallback_reason}`)*
-"""
-
+*Note: All simulation outputs and risk figures are derived strictly from historical price data and statistical model assumptions. They represent mathematical model outputs rather than market predictions and do not constitute financial advice.*"""
 
 def generate_risk_memo(
     ticker: str,
@@ -227,38 +222,26 @@ def generate_risk_memo(
             f"as a crisis scenario. VaR, CVaR and drawdown are normal historical figures.\n"
         )
 
+    t = sim_days / 252.0
+    sigma = data["annualized_volatility"]
+    mu = data["annualized_drift"]
+    d2 = ((mu - 0.5 * (sigma ** 2)) * t) / (sigma * math.sqrt(t)) if (sigma > 0 and t > 0) else 0.0
+    prob_above = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0))) * 100.0
+
     prompt_text = (
-        f"You are a risk analyst. Write a SHORT, simple risk summary for {ticker} in English.\n"
-        f"Rules: never use the '$' symbol (write '{cur_code}' instead) and no LaTeX; use only the numbers below; "
-        f"no investment advice or buy/sell wording; no options terms (gamma, delta, implied volatility); "
-        f"every bullet is 1-2 short sentences; the whole answer stays under 200 words.\n\n"
-        f"Data for {ticker}:\n"
-        f"- Spot price: {cur_code} {spot_p:.2f}\n"
-        f"- Assumed yearly growth (drift): {data['annualized_drift']*100:.2f}% | Yearly volatility: {data['annualized_volatility']*100:.2f}%\n"
-        f"- Simulation: {sim_days} trading days, 10,000 paths\n"
-        f"- Simulated end price: Median {cur_code} {sim_results['median_target']:.2f} ({med_ret:+.1f}% vs spot), "
-        f"Mean {cur_code} {sim_results['mean_target']:.2f}, "
-        f"Bad case (P5) {cur_code} {sim_results['percentile_5']:.2f} ({p5_ret:+.1f}% vs spot), "
-        f"Good case (P95) {cur_code} {sim_results['percentile_95']:.2f} ({p95_ret:+.1f}% vs spot)\n"
-        f"- Daily risk (historical): 95% VaR -{risk_results['var_hist_95']*100:.2f}%, "
-        f"95% CVaR -{risk_results['cvar_95']*100:.2f}%, 99% VaR -{risk_results['var_hist_99']*100:.2f}%, "
-        f"99% CVaR -{risk_results['cvar_99']*100:.2f}%\n"
-        f"- Worst 2-year drop from a peak (max drawdown): {risk_results['max_drawdown']*100:.2f}%\n"
-        f"- Tail check: {tail_note}\n"
-        f"{stress_note}\n"
-        f"Use exactly this format:\n"
-        f"### Technical Summary\n"
-        f"- **Price outlook:** median, bad case and good case, each with its % change vs spot. Explain that the "
-        f"bad case means only about 1 in 20 simulated outcomes ended lower, and the good case means only about "
-        f"1 in 20 ended higher (so they are not the absolute worst or best). Add one clause saying the drift "
-        f"is a past-based assumption, not a forecast.\n"
-        f"- **Daily risk:** the 95% VaR and CVaR, plus the tail check in one sentence.\n"
-        f"- **Drawdown:** the max drawdown and what it means.\n\n"
-        f"### Plain-English Summary\n"
-        f"- Two short bullets for a non-technical reader: first, say that about 9 out of 10 simulated outcomes "
-        f"ended between the bad case and the good case (with % changes vs spot) and that the upside mostly "
-        f"reflects past strong growth continuing, not a prediction; second, the 95% VaR explained as "
-        f"'on roughly 1 in 20 days the loss can be bigger than X%', plus the worst 2-year drop."
+        f"Write a clean, objective, single-section statistical summary in English for {ticker}. "
+        f"Do NOT split the text into multiple parts or headings. Do NOT use exaggerated hedge-fund jargon. "
+        f"Never use the '$' symbol (always write '{cur_code}' instead, e.g., '{cur_code} 150.00').\n\n"
+        f"Follow this exact tone and style:\n"
+        f"'Under the selected model assumptions, the median simulated price is {cur_code} X. Approximately X% of simulated outcomes end above the current price. "
+        f"The 5th percentile represents a downside scenario that is exceeded on the lower side in roughly 5% of simulations.'\n\n"
+        f"Summarize these metrics in 2 short paragraphs:\n"
+        f"- Current Price: {cur_code} {data['current_price']:.2f} | Horizon: {sim_days} trading days | Stress Mode Active: {stress_mode}\n"
+        f"- Median Simulated Price: {cur_code} {sim_results['median_target']:.2f} | Mean Simulated Price: {cur_code} {sim_results['mean_target']:.2f}\n"
+        f"- Percentage of simulations ending above current price: {prob_above:.1f}%\n"
+        f"- 5th Percentile: {cur_code} {sim_results['percentile_5']:.2f} | 95th Percentile: {cur_code} {sim_results['percentile_95']:.2f}\n"
+        f"- 2-Year Historical Daily Risk: 95% Historical VaR = -{risk_results['var_hist_95']*100:.2f}%, 95% CVaR = -{risk_results['cvar_95']*100:.2f}%, Max Drawdown = {risk_results['max_drawdown']*100:.2f}%\n\n"
+        f"End with a short sentence stating that these figures are derived from historical data and statistical assumptions, are model outputs rather than predictions, and are not financial advice."
     )
     ssl_ctx = ssl.create_default_context()
 
