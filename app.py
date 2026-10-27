@@ -32,10 +32,16 @@ def get_locks() -> dict:
 
 
 @st.cache_data(ttl=900, max_entries=8, show_spinner=False)
-def compute_bundle(ticker_input: str, sim_days: int, num_simulations: int, stress_mode: bool) -> dict:
+def compute_bundle(
+    ticker_input: str,
+    sim_days: int,
+    num_simulations: int,
+    stress_mode: bool,
+    vol_model: str = "standard"
+) -> dict:
     """Fetch data, simulate, and return ONLY lightweight results (cached, no big matrices)."""
     with get_locks()["sim"]:
-        data = fetch_equity_data(ticker_input, period="2y")
+        data = fetch_equity_data(ticker_input, period="2y", vol_model=vol_model)
 
         effective_drift = data["annualized_drift"] - 0.15 if stress_mode else data["annualized_drift"]
         effective_vol = data["annualized_volatility"] * 1.50 if stress_mode else data["annualized_volatility"]
@@ -76,6 +82,9 @@ def compute_bundle(ticker_input: str, sim_days: int, num_simulations: int, stres
             "currency": data["currency"],
             "base_drift": data["annualized_drift"],
             "base_vol": data["annualized_volatility"],
+            "vol_standard": data["vol_standard"],
+            "vol_ewma": data["vol_ewma"],
+            "vol_model": data["vol_model"],
             "effective_drift": effective_drift,
             "effective_vol": effective_vol,
             "bands": bands,
@@ -289,6 +298,14 @@ with st.sidebar:
         index=2
     )
 
+    vol_model_choice = st.radio(
+        "Volatility Estimation Model",
+        options=["Standard (Equal-Weighted)", "EWMA (RiskMetrics λ=0.94)"],
+        index=0,
+        help="Standard weights all 2-year historical days equally. EWMA applies exponential decay (λ=0.94) to weight recent market volatility more heavily."
+    )
+    vol_model_key = "ewma" if "EWMA" in vol_model_choice else "standard"
+
     st.divider()
     st.subheader("⚠️ Macro Stress Test")
     stress_mode = st.toggle(
@@ -313,7 +330,7 @@ if run_btn:
     with st.spinner(f"Calibrating stochastic parameters and simulating {num_simulations:,} paths for {ticker_input.strip().upper()}..."):
         try:
             st.session_state.sim_data = compute_bundle(
-                ticker_input.strip().upper(), sim_days, num_simulations, stress_mode
+                ticker_input.strip().upper(), sim_days, num_simulations, stress_mode, vol_model_key
             )
             st.session_state.analysis_done = True
             st.session_state.ai_memo = None
@@ -323,12 +340,20 @@ if run_btn:
 
 
 # 8. Render Dashboard
+
 if st.session_state.analysis_done and st.session_state.sim_data:
     bundle = st.session_state.sim_data
     sim = bundle["sim_summary"]
     risk = bundle["risk_results"]
     cur = bundle["currency"]
     spot = bundle["current_price"]
+
+    if bundle.get("vol_model") == "ewma":
+        st.info(
+            f"📊 **EWMA Volatility Regime Active (RiskMetrics λ=0.94):** Recent market weighting adjusted "
+            f"base annualized volatility from **{bundle['vol_standard']*100:.2f}%** (2Y Equal-Weighted) "
+            f"to **{bundle['vol_ewma']*100:.2f}%** (EWMA)."
+        )
 
     if bundle["stress_mode"]:
         st.warning(
