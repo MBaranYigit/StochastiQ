@@ -27,28 +27,37 @@ Applying **Itô's Lemma** to $\ln(S_t)$ yields the exact discrete-time evolution
 
 $$S_{t+\Delta t} = S_t \exp\left( \left(\mu - \frac{1}{2}\sigma^2\right)\Delta t + \sigma \sqrt{\Delta t} Z_t \right), \quad Z_t \sim \mathcal{N}(0, 1)$$
 
-Annualized drift ($\mu = \bar{r}_{log} \times 252 + 0.5\sigma^2$) and sample volatility ($\sigma$, with `ddof=1`) are estimated from a 2-year historical lookback window.
+Annualized drift ($\mu = \bar{r}_{log} \times 252 + 0.5\sigma_{sample}^2$) is estimated from a 2-year historical lookback window.
 
-### 2. Value at Risk (VaR), CVaR & Stress Testing
-* **VaR & CVaR Calculation:** Compares Gaussian Parametric VaR against non-parametric Historical VaR and Expected Shortfall (CVaR) at $\alpha = 0.05$ and $\alpha = 0.01$. VaR is computed from actual historical returns.
-* **Stress Test Adjustments:** Enabling the stress toggle scales input volatility by ×1.5 and adjusts annualized drift downward by %15.
+### 2. Volatility Regimes: Equal-Weighted vs. RiskMetrics EWMA ($\lambda = 0.94$)
+Users can dynamically switch between two volatility estimation models in the sidebar:
+- **Standard Historical Volatility:** Weights all daily log-returns equally over the 2-year sample window (`ddof=1`).
+- **EWMA Volatility ($\lambda = 0.94$):** Applies an Exponentially Weighted Moving Average with a decay factor of $\lambda = 0.94$ ($\alpha = 1 - \lambda = 0.06$), assigning greater weight to recent trading days to capture current market regimes:
+
+$$\sigma_t^2 = \lambda \sigma_{t-1}^2 + (1 - \lambda) r_{t-1}^2$$
+
+*(Note: Long-term drift calibration preserves the 2-year sample variance so short-term volatility spikes do not artificially distort the stock's underlying trend).*
+
+### 3. Value at Risk (VaR), CVaR & Stress Testing
+- **VaR & CVaR Calculation:** Compares Gaussian Parametric VaR against non-parametric Historical VaR and Expected Shortfall (CVaR) at $\alpha = 0.05$ and $\alpha = 0.01$. VaR is computed from actual historical returns.
+- **Stress Test Adjustments:** Enabling the stress toggle scales input volatility by ×1.5 and adjusts annualized drift downward by 15%.
 
 ---
 
 ## ⚠️ Model Limitations
 
-* **Constant Volatility & Volatility Clustering:** Standard GBM assumes constant annualized volatility ($\sigma$) across the entire simulation horizon. Real equity markets exhibit volatility clustering, where turbulent periods follow one another.
-* **Stress Test Scope:** The built-in stress test is a static scenario analysis; it raises the constant volatility level but does not model time-varying volatility.
-* **Fat Tails vs. Log-Normal Simulation:** Because simulated GBM log-returns are normally distributed (producing a log-normal terminal price distribution), the Monte Carlo paths themselves do not generate fat tails. Fat-tail behavior is only captured when evaluating empirical historical returns rather than simulated GBM returns.
-* **Interpretation of Outputs:** VaR figures and the 5th–95th percentile cone are model outputs, not predictions.
+- **Constant Forward Volatility & Volatility Clustering:** Standard GBM assumes equal-weighted historical volatility and keeps $\sigma$ constant across the forward simulation horizon. *(Addressed in v1.2.0: Integrating **RiskMetrics EWMA ($\lambda = 0.94$)** resolves equal-weighting bias and captures recent volatility clustering for the starting volatility calibration, though volatility remains constant along individual forward paths).*
+- **Stress Test Scope:** The built-in stress test is a static scenario analysis; it raises the constant volatility level but does not model time-varying volatility.
+- **Fat Tails vs. Log-Normal Simulation:** Because simulated GBM log-returns are normally distributed (producing a log-normal terminal price distribution), the Monte Carlo paths themselves do not generate fat tails. Fat-tail behavior is only captured when evaluating empirical historical returns rather than simulated GBM returns.
+- **Interpretation of Outputs:** VaR figures and the 5th–95th percentile cone are model outputs, not predictions.
 
 ---
 
 ## 🗺️ Roadmap
 
-* **Volatility Modeling:** Implement EWMA ($\lambda = 0.94$) to update the starting volatility estimate; GARCH(1,1) to model forward-looking time-varying volatility in the simulation.
-* **Multi-Tier Stress Presets:** Add selectable historical crisis scenarios alongside custom user-defined shock sliders.
-* **Out-of-Sample Backtesting:** Evaluate historical cone coverage and VaR breach frequency using the Kupiec POF (Proportion of Failures) test.
+- ✅ **Volatility Modeling:** Implement RiskMetrics EWMA ($\lambda = 0.94$) to dynamically update the starting volatility estimate and capture recent market regimes. *(Completed in v1.2.0)*
+- **Multi-Tier Stress Presets:** Add selectable historical crisis scenarios alongside custom user-defined shock sliders.
+- **Out-of-Sample Backtesting:** Evaluate historical cone coverage and VaR breach frequency using the Kupiec POF (Proportion of Failures) test.
 
 ---
 
