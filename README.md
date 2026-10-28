@@ -46,16 +46,16 @@ $$\sigma_t^2 = \lambda \sigma_{t-1}^2 + (1 - \lambda) r_{t-1}^2$$
 
 ## ⚠️ Model Limitations
 
-- **Constant Forward Volatility & Volatility Clustering:** Standard GBM weights all historical days equally and keeps $\sigma$ constant across the simulation horizon. *(**Addressed in v1.2.0:** RiskMetrics EWMA ($\lambda = 0.94$) now captures recent volatility clustering for the starting estimate, though volatility remains constant along forward paths).*
+- **Constant Forward Volatility & Volatility Clustering:** Standard GBM weights all historical days equally and keeps $\sigma$ constant across the simulation horizon. ✅ *(**Addressed in v1.2.0:** RiskMetrics EWMA ($\lambda = 0.94$) now captures recent volatility clustering for the starting estimate, though volatility remains constant along forward paths).*
 - **Stress Test Scope:** The built-in stress test is a static scenario analysis; it raises the constant volatility level but does not model time-varying volatility.
-- **Fat Tails vs. Log-Normal Simulation:** Because simulated GBM log-returns are normally distributed (producing a log-normal terminal price distribution), the Monte Carlo paths themselves do not generate fat tails. Fat-tail behavior is only captured when evaluating empirical historical returns rather than simulated GBM returns.
+- **Fat Tails vs. Log-Normal Simulation:** Since simulated GBM log-returns are normally distributed (producing a log-normal terminal price distribution), the Monte Carlo paths themselves do not generate fat tails. Fat-tail behavior is only captured when evaluating empirical historical returns rather than simulated GBM returns.
 - **Interpretation of Outputs:** VaR figures and the 5th–95th percentile cone are model outputs, not predictions.
 
 ---
 
 ## 🗺️ Roadmap
 
-- **Volatility Modeling:** Implement RiskMetrics EWMA ($\lambda = 0.94$) to update the starting volatility estimate and capture recent market regimes. ✅ *(Completed in v1.2.0)*
+- **Volatility Modeling:** Implement RiskMetrics EWMA ($\lambda = 0.94$) to update the starting volatility and capture recent market regimes. ✅ *(**Completed in v1.2.0**)*
 - **Multi-Tier Stress Presets:** Add selectable historical crisis scenarios alongside custom user-defined shock sliders.
 - **Out-of-Sample Backtesting:** Evaluate historical cone coverage and VaR breach frequency using the Kupiec POF (Proportion of Failures) test.
 
