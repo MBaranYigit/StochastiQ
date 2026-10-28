@@ -378,10 +378,17 @@ if st.session_state.analysis_done and st.session_state.sim_data:
         value=f"{sim['median_target']:.2f} {cur}",
         delta=f"{expected_return_pct:+.1f}% vs Spot"
     )
+
+    is_ewma = bundle.get("vol_model") == "ewma"
+    if bundle["stress_mode"]:
+        vol_badge = "Stress Shock (1.5x EWMA)" if is_ewma else "Stress Shock (1.5x)"
+    else:
+        vol_badge = "EWMA (λ=0.94)" if is_ewma else "Historical (2Y)"
+
     col3.metric(
         label="Annualized Volatility (σ)",
         value=f"{bundle['effective_vol']*100:.2f}%",
-        delta="Stress Shock (1.5x)" if bundle["stress_mode"] else "Historical (2Y)",
+        delta=vol_badge,
         delta_color="inverse" if bundle["stress_mode"] else "off"
     )
     col4.metric(
