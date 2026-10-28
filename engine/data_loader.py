@@ -10,13 +10,18 @@ def fetch_equity_data(ticker: str, period: str = "2y", vol_model: str = "standar
     if df.empty or len(df) < 30:
         raise ValueError(f"Insufficient historical price data found for '{clean_ticker}'.")
 
-    prices = df['Close']
+    # Ensure prices is a clean 1D Series with no missing or non-positive values
+    prices = df['Close'].squeeze().dropna()
+    prices = prices[prices > 0]
+
+    if len(prices) < 30:
+        raise ValueError(f"Insufficient valid closing prices found for '{clean_ticker}'.")
 
     # Simple returns (for monetary loss metrics such as VaR and CVaR)
-    simple_returns = prices.pct_change().dropna()
+    simple_returns = prices.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
 
     # Logarithmic returns (for GBM stochastic modeling)
-    log_returns = np.log(prices / prices.shift(1)).dropna()
+    log_returns = np.log(prices / prices.shift(1)).replace([np.inf, -np.inf], np.nan).dropna()
 
     daily_log_mean = float(log_returns.mean())
     
@@ -25,7 +30,13 @@ def fetch_equity_data(ticker: str, period: str = "2y", vol_model: str = "standar
     vol_standard = float(daily_std_equal * np.sqrt(252))
 
     # 2. RiskMetrics EWMA Volatility (lambda = 0.94 -> alpha = 1 - 0.94 = 0.06)
-    daily_std_ewma = float(log_returns.ewm(alpha=0.06, adjust=False).std().iloc[-1])
+    ewma_series = log_returns.ewm(alpha=0.06, adjust=False).std().dropna()
+    daily_std_ewma = float(ewma_series.iloc[-1]) if not ewma_series.empty else daily_std_equal
+    
+    # Fallback guard in case of any numerical edge case
+    if not np.isfinite(daily_std_ewma) or daily_std_ewma <= 0:
+        daily_std_ewma = daily_std_equal
+
     vol_ewma = float(daily_std_ewma * np.sqrt(252))
 
     # Select active volatility based on user choice
